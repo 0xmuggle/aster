@@ -148,7 +148,7 @@ export async function submitFuturesOrder(
  * @param apiSecret - The user's API secret.
  * @returns A promise that resolves to an array of balance information.
  */
-export async function fetchAccountBalance(apiKey: string, apiSecret: string): Promise<AccountBalanceInfo | null> {
+export async function fetchAccountBalance(apiKey: string, apiSecret: string): Promise<AccountBalanceInfo | any> {
   try {
     const response = await apiFetch({
       path: "/fapi/v4/account",

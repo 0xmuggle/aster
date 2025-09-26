@@ -2,6 +2,8 @@ export interface User {
   name: string;
   apiKey: string;
   apiSecret: string;
+  txs: number;
+  vol: number;
 }
 
 export type HedgeSymbol = "BTC" | "ETH" | "SOL";
@@ -30,11 +32,12 @@ export interface HedgeOrderDraft {
 
 export type HedgeOrderStatus = "draft" | "open" | "closed";
 
-export type PositionSide = "BOTH" | "LONG" | "SHORT";
+export type PositionSide = "BOTH" | "LONG" | "SHORT" | "BUY" | "SELL";
 
 export interface AccountPosition {
   symbol: string;
-  positionAmt: string;
+  positionAmt: number;
+  leverage: number;
   entryPrice?: string;
   ep?: string;
   markPrice?: string;
@@ -42,7 +45,6 @@ export interface AccountPosition {
   unRealizedProfit?: string;
   up?: string;
   liquidationPrice?: string;
-  leverage?: string;
   maxNotionalValue?: string;
   marginType?: string;
   isolatedMargin?: string;
@@ -75,20 +77,9 @@ export interface FuturesOpenOrder {
 }
 
 export interface AccountBalanceInfo {
-  accountAlias?: string;
-  totalWalletBalance?: string;
-  availableBalance?: string;
-  availableBalanceUsd?: string;
-  availableBalanceUSDT?: string;
-  leverage?: number;
-  totalMarginBalance?: string;
-  totalUnrealizedProfit?: string;
-  totalPositionInitialMargin?: string;
-  totalOpenOrderInitialMargin?: string;
-  totalCrossWalletBalance?: string;
-  assets?: AccountAsset[];
-  positions?: AccountPosition[];
-  [key: string]: unknown;
+  totalWalletBalance: string;
+  availableBalance: string;
+  positions: AccountPosition[];
 }
 
 export interface AccountAsset {
@@ -131,12 +122,8 @@ export interface FuturesOrderUpdate {
   tradeId?: number;
 }
 
-export interface AccountLiveState {
-  info?: AccountBalanceInfo;
-  assets: AccountAsset[];
+export interface AccountLiveState extends AccountBalanceInfo {
   positions: AccountPosition[];
-  orders: Record<string, FuturesOrderUpdate>;
-  listenKey?: string;
   lastAccountUpdate?: number;
   lastOrderUpdate?: number;
 }

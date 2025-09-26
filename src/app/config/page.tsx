@@ -76,7 +76,7 @@ export default function ConfigPage() {
                   <span className="font-bold mr-4">{user.name}</span>
                   <span>API Key: {user.apiKey.substring(0, 8)}...</span>
                 </div>
-                <p className="text-purple-600">Balance: {accountMap[user.name]?.info?.totalWalletBalance || "N/A"}</p>
+                <p className="text-purple-600">Balance: {accountMap[user.name]?.totalWalletBalance || "N/A"}</p>
               </div>
               <button
                 onClick={() => deleteUser(user.name)}

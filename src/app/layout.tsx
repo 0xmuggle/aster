@@ -16,16 +16,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-white text-sm">
-        <nav className="bg-gray-800 p-4">
-          <div className="container mx-auto flex gap-4">
-            <Link href="/" className="text-white hover:text-gray-300">
-              Home
-            </Link>
-            <Link href="/config" className="text-white hover:text-gray-300">
-              Config
-            </Link>
-          </div>
-        </nav>
         <main className="container mx-auto p-4">
           <EProvider>{children}</EProvider>
         </main>

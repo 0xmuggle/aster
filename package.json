@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "crypto": "^1.0.1",
-    "idb-keyval": "^6.2.2",
     "lodash": "^4.17.21",
     "next": "15.5.4",
     "react": "19.1.0",

@@ -10,11 +10,13 @@ import type {
   HedgeOrder,
   HedgeOrderDraft,
   HedgeSymbol,
-  PositionSide,
+  User,
 } from "@/lib/types";
 import { useExtension } from "@/components/EProvider";
 import { useTickers } from "@/hooks/useTickers";
 import { closeFuturesPosition, submitFuturesOrder } from "@/services/api";
+import { MARKET_SYMBOL_MAP, SYMBOL_OPTIONS } from "@/lib/common";
+import { isEmpty } from "lodash";
 
 type OrderFormState = {
   symbol: HedgeSymbol;
@@ -25,24 +27,10 @@ type OrderFormState = {
   stopLoss: string;
 };
 
-const SYMBOL_OPTIONS: HedgeSymbol[] = ["BTC", "SOL", "ETH"];
-
-const MARKET_SYMBOL_MAP: Record<HedgeSymbol, string> = {
-  BTC: "BTCUSDT",
-  SOL: "SOLUSDT",
-  ETH: "ETHUSDT",
-};
-
 const SYMBOL_PRECISION: Record<HedgeSymbol, { price: number; quantity: number }> = {
   BTC: { price: 1, quantity: 4 },
   ETH: { price: 2, quantity: 4 },
   SOL: { price: 3, quantity: 3 },
-};
-
-const POSITION_SIDE_LABELS: Record<PositionSide, string> = {
-  BOTH: "双向",
-  LONG: "多头",
-  SHORT: "空头",
 };
 
 const toMarketSymbol = (symbol: HedgeSymbol) => MARKET_SYMBOL_MAP[symbol];
@@ -70,34 +58,6 @@ const findOpenPositions = (account: AccountLiveState | undefined, marketSymbol: 
     const size = parseNumeric(position.positionAmt);
     return size !== null && Math.abs(size) > 0;
   });
-
-const resolveLeverage = (account: AccountLiveState | undefined, marketSymbol: string) => {
-  const preferred = findPositions(account, marketSymbol).find((position) => parseNumeric(position.leverage) !== null);
-  if (preferred) {
-    const leverage = parseNumeric(preferred.leverage);
-    if (leverage !== null) {
-      return leverage;
-    }
-  }
-  const fallback = parseNumeric(account?.info?.leverage as number | string | undefined);
-  return fallback ?? undefined;
-};
-
-const getAvailableBalance = (account: AccountLiveState | undefined) => {
-  if (!account) {
-    return undefined;
-  }
-  const infoBalance = account.info?.availableBalance ?? account.info?.availableBalanceUsd ?? account.info?.availableBalanceUSDT;
-  if (infoBalance !== undefined) {
-    return infoBalance;
-  }
-  const usdtAsset = account.assets.find((asset) => asset.asset === "USDT");
-  return usdtAsset?.availableBalance ?? usdtAsset?.crossWalletBalance ?? usdtAsset?.walletBalance;
-};
-
-const formatPositionSide = (side: PositionSide) => POSITION_SIDE_LABELS[side] || side;
-
-const formatLeverageText = (value?: number) => (value !== undefined ? `${formatNumber(value, 2)}x` : "--");
 
 const createEmptyForm = (): OrderFormState => ({
   symbol: "BTC",
@@ -190,8 +150,8 @@ const resolveCloseSide = (position: AccountPosition): "BUY" | "SELL" | null => {
 };
 
 export default function Home() {
-  const { users, orders, addOrder, updateOrder, setOrderStatus, deleteOrder } = useStore();
-  const { accountMap, refreshAccountInfo } = useExtension();
+  const { users, orders, addOrder, updateOrder, setOrderStatus, deleteOrder, updateUser } = useStore();
+  const { accountMap, refreshAccount } = useExtension();
 
   const [formState, setFormState] = useState<OrderFormState>(createEmptyForm);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -207,9 +167,9 @@ export default function Home() {
   const { prices } = useTickers(subscribedSymbols);
 
   const userMap = useMemo(() => {
-    const map = new Map<string, { apiKey: string; apiSecret: string }>();
+    const map = new Map<string, User>();
     users.forEach((user) => {
-      map.set(user.name, { apiKey: user.apiKey, apiSecret: user.apiSecret });
+      map.set(user.name, user);
     });
     return map;
   }, [users]);
@@ -254,7 +214,7 @@ export default function Home() {
 
       await Promise.all(tasks);
       
-      refreshAccountInfo(accountName, credentials.apiKey, credentials.apiSecret);
+      refreshAccount(accountName);
     },
     [accountMap, userMap],
   );
@@ -359,14 +319,27 @@ export default function Home() {
     };
 
   const handleOpen = useCallback(
-    async (order: HedgeOrder) => {
+    async (order: HedgeOrder, acanp: number, bcanp: number, aLevel: number = 0, bLevel: number = 0) => {
       if (openingOrderId === order.id) {
         return;
       }
 
       const amount = parseNumeric(order.amount);
+
+      const maxCanPosition = Math.min(acanp, bcanp) * 0.9;
+
+      if(aLevel !== bLevel) {
+        setFormError("杠杆需一致");
+        return;
+      }
+
       if (amount === null || amount <= 0) {
         setFormError("开仓金额必须大于0。");
+        return;
+      }
+
+      if(amount > maxCanPosition) {
+        setFormError(`开仓金额必须小于于${maxCanPosition.toFixed(3)}。`);
         return;
       }
 
@@ -381,34 +354,38 @@ export default function Home() {
       const takeProfitPct = order.takeProfit;
       const stopLossPct = order.stopLoss;
 
-      const legs: Array<{
-        accountName: string;
-        positionSide: "BOTH";
-        entrySide: "BUY" | "SELL";
-      }> = [
+      let aSide: any = "BUY";
+      let bSide: any = "SELL";
+      if(Math.random() > 0.5) {
+        aSide = "SELL";
+        bSide = "BUY";
+      }
+      const legs: any = [
         {
           accountName: order.primaryAccount,
           positionSide: "BOTH",
-          entrySide: "BUY",
+          entrySide: aSide,
         },
         {
           accountName: order.hedgeAccount,
           positionSide: "BOTH",
-          entrySide: "SELL",
+          entrySide: bSide,
         },
       ];
 
       setOpeningOrderId(order.id);
       setFormError(null);
+
       try {
         await Promise.all(
-          legs.map(async ({ accountName, positionSide, entrySide }) => {
+          legs.map(async ({ accountName, positionSide, entrySide }: any) => {
             const credentials = userMap.get(accountName);
             if (!credentials) {
               throw new Error(`找不到账户 ${accountName} 的API信息，请前往配置页面设置。`);
             }
 
             const closingSide = entrySide === "BUY" ? "SELL" : "BUY";
+
             await submitFuturesOrder(credentials.apiKey, credentials.apiSecret, {
               symbol: marketSymbol,
               side: entrySide,
@@ -418,11 +395,11 @@ export default function Home() {
             });
 
             const takeProfitPriceRaw = entrySide === "BUY"
-                  ? price * (1 + takeProfitPct / 100)
-                  : price * (1 - takeProfitPct / 100)
+                  ? price * ((1 + takeProfitPct / 100 / aLevel))
+                  : price * (1 - takeProfitPct / 100 / aLevel)
             const stopLossPriceRaw = entrySide === "BUY"
-                  ? price * (1 - stopLossPct / 100)
-                  : price * (1 + stopLossPct / 100)
+                  ? price * (1 - stopLossPct / 100 / aLevel)
+                  : price * (1 + stopLossPct / 100 / aLevel)
 
             const takeProfitPrice =
               takeProfitPriceRaw && takeProfitPriceRaw > 0 ? formatPriceForSymbol(order.symbol, takeProfitPriceRaw) : null;
@@ -452,11 +429,12 @@ export default function Home() {
                 workingType: "MARK_PRICE",
               });
             }
-            refreshAccountInfo(accountName, credentials.apiKey, credentials.apiSecret);
+            refreshAccount(accountName);
           }),
         );
         setOrderStatus(order.id, "open");
-
+        updateUser(order.primaryAccount, order.amount);
+        updateUser(order.hedgeAccount, order.amount);
       } catch (error) {
         const message = error instanceof Error ? error.message : "开仓失败，请稍后重试。";
         setFormError(message);
@@ -481,59 +459,63 @@ export default function Home() {
         closeAccountPositions(order.hedgeAccount, marketSymbol),
       ]);
       setOrderStatus(order.id, "closed");
+      updateUser(order.primaryAccount, order.amount);
+      updateUser(order.hedgeAccount, order.amount);
     } catch {
       setFormError("平仓失败，请稍后重试。");
     } finally {
       setClosingOrderId((current) => (current === order.id ? null : current));
     }
   };
-
+  
   const orderSections = orders.map((order) => {
     const marketSymbol = toMarketSymbol(order.symbol);
     const price = prices[order.symbol];
     const mainAccount = accountMap[order.primaryAccount];
     const hedgeAccount = accountMap[order.hedgeAccount];
-    const mainPositions = findOpenPositions(mainAccount, marketSymbol);
-    const hedgePositions = findOpenPositions(hedgeAccount, marketSymbol);
-    const mainPosition = mainPositions[0] ?? null;
-    const hedgePosition = hedgePositions[0] ?? null;
-    const isOpen = Boolean(mainPosition || hedgePosition);
+    const mainPosition = mainAccount?.positions.find(p => p.symbol === marketSymbol);
+    const hedgePosition = hedgeAccount?.positions.find(p => p.symbol === marketSymbol);
+    const isOpen = Math.abs(mainPosition?.positionAmt || 0) > 0 && Math.abs(hedgePosition?.positionAmt || 0) > 0
     const statusLabel = isOpen ? "已开仓" : order.status === "closed" ? "已平仓" : "待开仓";
     const statusClass = isOpen
       ? "text-emerald-600"
       : order.status === "closed"
         ? "text-slate-400"
         : "text-slate-500";
-    const mainLeverage = resolveLeverage(mainAccount, marketSymbol);
-    const hedgeLeverage = resolveLeverage(hedgeAccount, marketSymbol);
-    const mainBalance = getAvailableBalance(mainAccount);
-    const hedgeBalance = getAvailableBalance(hedgeAccount);
-
+    const mainLeverage = mainPosition?.leverage;
+    const hedgeLeverage = hedgePosition?.leverage;
+    const mainBalance = mainAccount?.availableBalance;
+    const hedgeBalance = hedgeAccount?.availableBalance;
+    const mainCanPosition = mainBalance && mainLeverage && price ? Number(mainBalance) * mainLeverage / price : 0;
+    const hegeCanPosition = hedgeBalance && hedgeLeverage && price ? Number(hedgeBalance) * hedgeLeverage / price : 0;
+    
     const renderPositionCard = (accountKey: string, position: AccountPosition | any) => {
-      if (!position) {
+      if (!position || Math.abs(position.positionAmt) === 0) {
         return <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">暂无仓位</div>;
       }
-
       const unrealized = ((price || 0) - position.entryPrice) * position.positionAmt;
       const takeProfitPrice = position.takeProfitPrice ? formatNumber(position.takeProfitPrice, 2) : '--';
       const stopLossPrice = position.stopLossPrice ? formatNumber(position.stopLossPrice, 2) : '--';
-
       return (
         <div
           key={`${accountKey}-${position.symbol}-${position.positionSide}`}
-          className="rounded-md bg-emerald-50/70 p-3 text-sm text-emerald-700"
+          className="text-sm border-t pt-2 border-gray-200"
         >
-          <div>方向：{formatPositionSide(position.positionSide)}</div>
-          <div>仓位大小：{formatNumber(position.positionAmt, 3)}</div>
+          <div className="flex justify-between">
+            <span>
+              仓位大小：{formatNumber(position.positionAmt, 3)}
+              {position.positionAmt > 0 && <span className="ml-2 p-[2px] bg-emerald-500 text-white">多</span>}
+              {position.positionAmt < 0 && <span className="ml-2 p-[2px] bg-red-500 text-white">空</span>}
+            </span>
+            <span className={unrealized > 0 ? "text-emerald-700 text-base" : "text-red-600 text-base"}>{formatSignedNumber(unrealized, 2)}</span>
+          </div>
           <div>入场价：{formatNumber(position.entryPrice, 2)}</div>
-          <div>未实现盈亏：{formatSignedNumber(unrealized, 2)}</div>
-          <div>止盈价格：{takeProfitPrice}</div>
-          <div>止损价格：{stopLossPrice}</div>
-          <div>最近更新时间：{formatDateTime(position.updateTime)}</div>
+          <div>止盈/止损价格：{takeProfitPrice} / {stopLossPrice}</div>
+          <div>开仓时间：{formatDateTime(position.updateTime)}</div>
         </div>
       );
     };
-
+    
     return (
       <div key={order.id} className="rounded-lg border border-slate-200 bg-white/80 p-4 text-left shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -555,22 +537,32 @@ export default function Home() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => handleEdit(order)}
+              onClick={() => {
+                refreshAccount(order.primaryAccount);
+                refreshAccount(order.hedgeAccount);
+              }}
               className="rounded-md border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100"
+            >
+              刷新
+            </button>
+            <button
+              disabled={isOpen}
+              onClick={() => handleEdit(order)}
+              className="rounded-md border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100 disabled:border-slate-200 disabled:text-slate-400"
             >
               编辑
             </button>
             <button
-              onClick={() => handleOpen(order)}
+              onClick={() => handleOpen(order, mainCanPosition, hegeCanPosition, mainLeverage, hedgeLeverage)}
               className="rounded-md border border-emerald-500 px-3 py-1 text-sm text-emerald-700 hover:bg-emerald-50 disabled:border-slate-200 disabled:text-slate-400"
-              disabled={isOpen || openingOrderId === order.id}
+              disabled={isOpen || openingOrderId === order.id || Math.abs(mainPosition?.positionAmt || 0) > 0 || Math.abs(hedgePosition?.positionAmt|| 0) > 0}
             >
               {openingOrderId === order.id ? "开仓中..." : "开仓"}
             </button>
             <button
-              onClick={() => void handleClose(order)}
+              onClick={() => handleClose(order)}
               className="rounded-md border border-rose-500 px-3 py-1 text-sm text-rose-600 hover:bg-rose-50 disabled:border-slate-200 disabled:text-slate-400"
-              disabled={!isOpen || closingOrderId === order.id}
+              disabled={!isOpen || closingOrderId === order.id || Math.abs(mainPosition?.positionAmt || 0) !== Math.abs(hedgePosition?.positionAmt|| 0)}
             >
               {closingOrderId === order.id ? "平仓中..." : "平仓"}
             </button>
@@ -582,22 +574,30 @@ export default function Home() {
             </button>
           </div>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="mt-2 grid gap-4 md:grid-cols-2">
           <div className="rounded-md bg-slate-50 p-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-slate-600">主账户：{order.primaryAccount || "--"}</div>
-              <div className="text-xs text-slate-500">杠杆：{formatLeverageText(mainLeverage)}</div>
+              <div className="text-xs text-slate-500">杠杆：{mainLeverage}</div>
             </div>
-            <div className="mt-1 text-xs text-slate-500">可用余额：{formatNumber(mainBalance)}</div>
-            <div className="mt-3">{renderPositionCard(`${order.id}-primary`, mainPosition)}</div>
+             <div className="mt-1 text-xs text-slate-500 space-x-4">
+              <span>可用余额：{formatNumber(mainBalance)}(可开: {mainCanPosition.toFixed(3)})</span>
+              <span>交易次数: {userMap.get(order.primaryAccount)?.txs || '-'}</span>
+              <span>交易量: {userMap.get(order.primaryAccount)?.vol || '-'}</span>
+            </div>
+            <div className="mt-1">{renderPositionCard(`${order.id}-primary`, mainPosition)}</div>
           </div>
           <div className="rounded-md bg-slate-50 p-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-slate-600">对冲账户：{order.hedgeAccount || "--"}</div>
-              <div className="text-xs text-slate-500">杠杆：{formatLeverageText(hedgeLeverage)}</div>
+              <div className=" font-semibold">对冲账户：{order.hedgeAccount || "--"}</div>
+              <div className="text-xs text-slate-500">杠杆：{hedgeLeverage}</div>
             </div>
-            <div className="mt-1 text-xs text-slate-500">可用余额：{formatNumber(hedgeBalance)}</div>
-            <div className="mt-3">{renderPositionCard(`${order.id}-hedge`, hedgePosition)}</div>
+            <div className="mt-1 text-xs text-slate-500 space-x-4">
+              <span>可用余额: {formatNumber(hedgeBalance)}(可开: {hegeCanPosition.toFixed(3)})</span>
+              <span>交易次数: {userMap.get(order.hedgeAccount)?.txs || '-'}</span>
+              <span>交易量: {userMap.get(order.hedgeAccount)?.vol || '-'}</span>
+            </div>
+            <div className="mt-1">{renderPositionCard(`${order.id}-hedge`, hedgePosition)}</div>
           </div>
         </div>
       </div>
@@ -617,7 +617,7 @@ export default function Home() {
       </header>
 
       <div className="space-y-4">
-        {orders.length > 0 ? orderSections : (
+        {orders.length > 0 && !isEmpty(userMap) ? orderSections : (
           <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500">
             暂无对冲订单，使用底部表单创建一个吧。
           </div>

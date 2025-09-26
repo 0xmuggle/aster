@@ -2,11 +2,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { HedgeOrder, HedgeOrderDraft, HedgeOrderStatus, User } from "./types";
 
-
 interface AppState {
   orders: HedgeOrder[];
 
   users: User[];
+  updateUser: (name: string, vol: number) => void;
   addUser: (user: User) => void;
   deleteUser: (name: string) => void;
   addOrder: (draft: HedgeOrderDraft) => void;
@@ -15,7 +15,8 @@ interface AppState {
   deleteOrder: (id: string) => void;
 }
 
-const generateOrderId = () => `order-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const generateOrderId = () =>
+  `order-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export const useStore = create<AppState>()(
   persist(
@@ -24,8 +25,25 @@ export const useStore = create<AppState>()(
 
       users: [], // 示例：[{ id: 1, name: 'Alice', symbol: 'USER1' }, ...]
       // 添加用户
-      addUser: (user: User) => set((state) => ({ users: [...state.users, user] })),
-      deleteUser: (name: string) => set((state) => ({ users: state.users.filter(item => item.name !== name) })),
+      addUser: (user: User) =>
+        set((state) => ({ users: [...state.users, user] })),
+      deleteUser: (name: string) =>
+        set((state) => ({
+          users: state.users.filter((item) => item.name !== name),
+        })),
+      updateUser: (name: string, vol: number) => {
+        set((state) => ({
+          users: state.users.map((user) =>
+            user.name === name
+              ? {
+                  ...user,
+                  vol: Number(user.vol || 0) + vol,
+                  txs: Number(user.txs) + 1,
+                }
+              : user
+          ),
+        }));
+      },
       addOrder: (draft: HedgeOrderDraft) => {
         const timestamp = new Date().toISOString();
         const newOrder: HedgeOrder = {
@@ -54,22 +72,25 @@ export const useStore = create<AppState>()(
       setOrderStatus: (id: string, status: HedgeOrderStatus) => {
         const timestamp = new Date().toISOString();
         set((state) => ({
-          orders: state.orders.map((order) =>
-            order.id === id
-              ? {
-                  ...order,
-                  status,
-                  updatedAt: timestamp,
-                }
-              : order
-          ),
+          orders: state.orders.map((order) => {
+            if (order.id === id) {
+              return {
+                ...order,
+                status,
+                updatedAt: timestamp,
+              };
+            }
+            return order;
+          }),
         }));
       },
       deleteOrder: (id: string) =>
-        set((state) => ({ orders: state.orders.filter((order) => order.id !== id) })),
+        set((state) => ({
+          orders: state.orders.filter((order) => order.id !== id),
+        })),
     }),
     {
-      name: 'app-storage', // localStorage 的 key
+      name: "app-storage", // localStorage 的 key
       storage: createJSONStorage(() => localStorage), // 使用 localStorage
       partialize: (state) => ({
         orders: state.orders,
