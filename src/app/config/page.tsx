@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useExtension } from "@/components/EProvider";
 
@@ -23,6 +23,10 @@ export default function ConfigPage() {
       alert("Please fill in all fields.");
     }
   };
+
+  const total = useMemo(() => {
+    return Object.keys(accountMap).reduce((pre, next) => pre + Number(accountMap[next]?.totalWalletBalance || 0), 0);
+  }, [accountMap]);
 
   return (
     <div>
@@ -66,7 +70,7 @@ export default function ConfigPage() {
       {/* Accounts List and Balances */}
       <div className="p-4 bg-gray-50 rounded-lg">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">账户</h2>
+          <h2 className="text-xl font-semibold">账户({total.toFixed(2)})</h2>
         </div>
         <div className="space-y-4">
           {users.map((user) => (

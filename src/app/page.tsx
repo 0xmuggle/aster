@@ -396,12 +396,21 @@ export default function Home() {
     );
   };
 
+  const total = useMemo(() => {
+    const totalBalance = Object.keys(accountMap).reduce((pre, next) => pre + Number(accountMap[next]?.totalWalletBalance || 0), 0);
+    const totalVol = users.reduce((pre, next) => pre + (next.vol || 0), 0);
+    return {
+      totalBalance,
+      totalVol
+    }
+  }, [accountMap, users]);
+
   return (
     <div className="relative min-h-screen pb-64">
       <header className="mb-2 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">对冲订单管理</h1>
-          <p className="text-sm text-slate-500">在此创建和管理对冲订单。账户管理请前往<Link href="/config" className="ml-2 text-blue-500 hover:underline">账户配置</Link>页面。</p>
+          <p className="text-sm text-slate-500">在此创建和管理对冲订单。账户管理请前往<Link href="/config" className="mx-2 text-blue-500 hover:underline">账户配置</Link>页面。(<span className="text-purple-500">总金额: ${total.totalBalance.toFixed(2)} 总交易量: ${total.totalVol.toFixed(2)})</span></p>
         </div>
         <div className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-600">
           已创建订单：{orders.length}
