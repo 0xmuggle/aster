@@ -5,6 +5,7 @@ import { fetchAccountBalance, fetchOpenOrders } from '@/services/api';
 import type { AccountLiveState } from '@/lib/types';
 import { useCallback, useEffect, useMemo, useState, createContext, useContext, useRef } from 'react';
 import { SYMBOL_OPTIONS } from '@/lib/common';
+import { omit } from 'lodash';
 
 type AccountMap = Record<string, AccountLiveState>;
 
@@ -28,7 +29,6 @@ export function EProvider({ children }: { children: React.ReactNode }) {
       if (!info) {
         return;
       }
-
       let positions = info.positions.filter((position: any) => SYMBOL_OPTIONS.includes(position.symbol.replace('USDT', '')));
       if (positions.length > 0) {
         const symbols = positions.filter((position: any) => Number(position.positionAmt) !== 0).map((position: any) => position.symbol);
@@ -55,11 +55,10 @@ export function EProvider({ children }: { children: React.ReactNode }) {
           });
         })
       }
-      delete info.assets;
       setAccountMap((prev) => ({
         ...prev,
         [name]: {
-           ...info,
+           ...omit(info, "assets"),
           positions,
           lastAccountUpdate: Date.now(),
         }

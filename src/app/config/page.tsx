@@ -17,7 +17,7 @@ export default function ConfigPage() {
   // Add a new account
   const addAccount = () => {
     if (newAccount.name && newAccount.apiKey && newAccount.apiSecret) {
-      addUser(newAccount);
+      addUser({ ...newAccount, txs: 0, vol: 0 });
       setNewAccount({ name: "", apiKey: "", apiSecret: "" });
     } else {
       alert("Please fill in all fields.");

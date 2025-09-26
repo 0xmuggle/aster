@@ -25,8 +25,7 @@ export const useStore = create<AppState>()(
 
       users: [], // 示例：[{ id: 1, name: 'Alice', symbol: 'USER1' }, ...]
       // 添加用户
-      addUser: (user: User) =>
-        set((state) => ({ users: [...state.users, user] })),
+      addUser: (user: User) => set((state) => ({ users: [...state.users, user] })),
       deleteUser: (name: string) =>
         set((state) => ({
           users: state.users.filter((item) => item.name !== name),
@@ -37,8 +36,8 @@ export const useStore = create<AppState>()(
             user.name === name
               ? {
                   ...user,
-                  vol: Number(user.vol || 0) + vol,
-                  txs: Number(user.txs) + 1,
+                  vol: Number(user.vol || 0) + Math.abs(vol),
+                  txs: Number(user.txs || 0) + 1,
                 }
               : user
           ),

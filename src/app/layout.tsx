@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import "./globals.css";
 import { EProvider } from "@/components/EProvider";
 
@@ -16,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-white text-sm">
-        <main className="container mx-auto p-4">
+        <main className="mx-auto py-4 px-6">
           <EProvider>{children}</EProvider>
         </main>
       </body>

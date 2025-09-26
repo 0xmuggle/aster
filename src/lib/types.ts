@@ -13,6 +13,7 @@ export interface HedgeOrder {
   symbol: HedgeSymbol;
   primaryAccount: string;
   hedgeAccount: string;
+  hedgeAccount2?: string | null;
   amount: number;
   takeProfit: number;
   stopLoss: number;
@@ -25,6 +26,7 @@ export interface HedgeOrderDraft {
   symbol: HedgeSymbol;
   primaryAccount: string;
   hedgeAccount: string;
+  hedgeAccount2: string;
   amount: number;
   takeProfit: number;
   stopLoss: number;
