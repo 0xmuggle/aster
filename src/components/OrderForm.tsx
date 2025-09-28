@@ -1,10 +1,11 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useState } from "react";
 
-import { SYMBOL_OPTIONS } from "@/lib/common";
+import { SYMBOL_OPTIONS, SYMBOL_PRECISION } from "@/lib/common";
 import type { HedgeOrder, HedgeSymbol, User } from "@/lib/types";
 import { useStore } from "@/lib/store";
+import { generateGroups } from "@/lib/radomOrder";
 
 interface OrderFormState {
   symbol: HedgeSymbol;
@@ -17,6 +18,7 @@ interface OrderFormState {
 };
 
 interface OrderFormProps {
+  noUs: any[];
   users: User[];
   editingOrder: HedgeOrder | null;
   formError: string | null;
@@ -35,6 +37,7 @@ const initState:OrderFormState  = {
 }
 
 export function OrderForm({
+  noUs,
   users,
   editingOrder,
   formError,
@@ -71,8 +74,8 @@ export function OrderForm({
       }));
     };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = (event: any) => {
+    event?.preventDefault?.();
     onSetFormError(null);
 
     if (!formState.primaryAccount || !formState.hedgeAccount) {
@@ -130,14 +133,51 @@ export function OrderForm({
     cancelEditAndReset();
   };
 
+  const randomValue = (base: number, range: number, persion: number) => {
+    const min = base * (1 - range); // 8 * 0.9 = 7.2
+    const max = base * (1 + range); // 8 * 1.1 = 8.8 
+    const val = Math.random() * (max - min) + min;
+    const result = Number(val.toFixed(persion));
+    return result;
+  }
+
+  const batchOrder = (e: any) => {
+    e?.preventDefault?.();
+    const groups = generateGroups(users);
+    groups.forEach(((item, index) => {
+      addOrder({
+        ...item,
+        symbol: formState.symbol,
+        amount: randomValue(formState.amount, 0.2, SYMBOL_PRECISION[formState.symbol].quantity),
+        takeProfit: Math.max(50, Math.min(randomValue(formState.takeProfit, 0.3, 0), 95)),
+        stopLoss: Math.max(50, Math.min(randomValue(formState.stopLoss, 0.3, 0), 95)),
+        num: index+ 1,
+      })
+    }));
+  }
+
+  const randomOrder = useCallback((e: any) => {
+    e?.preventDefault?.();
+    const len = noUs.length;
+    if(len >= 3) {
+      addOrder({
+        ...formState,
+        takeProfit: Math.max(50, Math.min(randomValue(80, 0.3, 0), 95)),
+        stopLoss: Math.max(50, Math.min(randomValue(80, 0.3, 0), 95)),
+        primaryAccount: noUs[0].name,
+        hedgeAccount: noUs[len - 1].name,
+        hedgeAccount2: noUs[len - 2].name,
+      });
+    }
+  }, [noUs, formState])
+
   const submitLabel = editingOrder ? "更新订单" : "创建订单";
 
   return (
     <form
-      onSubmit={handleSubmit}
       className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur"
     >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-end gap-4">
+      <div className="mx-auto flex flex-wrap items-end justify-center gap-4">
         <div className="flex flex-col">
           <label className="text-xs text-slate-500">交易对</label>
           <select
@@ -240,7 +280,7 @@ export function OrderForm({
           />
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {formError && <span className="text-sm text-rose-600">{formError}</span>}
           {editingOrder && (
             <button
@@ -255,8 +295,23 @@ export function OrderForm({
             type="submit"
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-slate-300"
             disabled={users.length < 2}
+            onClick={handleSubmit}
           >
             {submitLabel}
+          </button>
+          <button
+            onClick={batchOrder}
+            className="rounded-md border border-blue-600 px-4 py-2 text-blue-600 text-sm font-semibold hover:bg-blue-200 disabled:bg-slate-300"
+            disabled={formState.amount <= 0 || Boolean(editingOrder)}
+          >
+            批量订单
+          </button>
+          <button
+            onClick={randomOrder}
+            className="rounded-md border border-blue-600 px-4 py-2 text-blue-600 text-sm font-semibold hover:bg-blue-200 disabled:bg-slate-300"
+            disabled={formState.amount <= 0 || noUs.length < 3 || Boolean(editingOrder)}
+          >
+            随机订单
           </button>
         </div>
       </div>

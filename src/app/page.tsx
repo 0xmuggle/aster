@@ -20,7 +20,7 @@ import {
   parseNumeric,
   resolveCloseSide,
 } from "@/lib/common";
-import { isEmpty, sortBy } from "lodash";
+import { isEmpty } from "lodash";
 import OrderForm from "@/components/OrderForm";
 
 const toMarketSymbol = (symbol: HedgeSymbol) => MARKET_SYMBOL_MAP[symbol];
@@ -33,6 +33,9 @@ export default function Home() {
   const [formError, setFormError] = useState<string | null>(null);
   const [closingOrderId, setClosingOrderId] = useState<string | null>(null);
   const [openingOrderId, setOpeningOrderId] = useState<string | null>(null);
+
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterClose, setFilterClose] = useState(false);
 
   const subscribedSymbols = useMemo(() => {
     const unique = new Set<HedgeSymbol>(SYMBOL_OPTIONS);
@@ -240,13 +243,10 @@ export default function Home() {
               });
             }
             refreshAccount(accountName);
+            updateUser(accountName, quantity * price);
           }),
         );
         setOrderStatus(order.id, "open");
-        updateUser(order.primaryAccount, amount * price);
-        hugeAmounts.forEach((hAmount: number, index: number) => {
-          updateUser(huges[index].name, hAmount * price);
-        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "开仓失败，请稍后重试。";
         setFormError(message);
@@ -339,9 +339,23 @@ export default function Home() {
       let isOpen = false;
       if (Math.abs(primaryAmt) > 0) {
         if (hedges.length === 2 && hedges[0].amt * hedges[1].amt > 0 && Number((primaryAmt + hedges[0].amt + hedges[1].amt).toFixed(3)) === 0) {
-          isOpen = true;
+          if (
+            hedges[0].position?.updateTime &&
+            main.position?.updateTime &&
+            hedges[1].position?.updateTime &&
+            Math.abs(new Date(hedges[0].position?.updateTime).getTime() - new Date(main.position?.updateTime).getTime()) <= 2000 &&
+            Math.abs(new Date(hedges[1].position?.updateTime).getTime() - new Date(main.position?.updateTime).getTime()) <= 2000
+          ) {
+            isOpen = true;
+          }
         } else if (hedges.length === 1 && hedges[0].amt + primaryAmt === 0) {
-          isOpen = true;
+          if (
+            hedges[0].position?.updateTime &&
+            main.position?.updateTime &&
+            Math.abs(new Date(hedges[0].position?.updateTime).getTime() - new Date(main.position?.updateTime).getTime()) <= 2000
+          ) {
+            isOpen = true;
+          }
         }
       }
       const anyOpen = primaryAmt !== 0 || hedges.some((hedge) => Math.abs(hedge.amt) > 0);
@@ -353,9 +367,17 @@ export default function Home() {
         isOpen,
         price,
       }
-    });
-    return sortBy(res, [item => item.isOpen ? 0 : 1, item => new Date(item.order.createdAt).getTime()], ['desc', 'asc'])
-  }, [orders, accountMap, userMap, prices]);
+    })
+    return res.filter(item => filterClose && item.isOpen || filterOpen && !item.anyOpen || !filterOpen && !filterClose)
+  }, [orders, accountMap, userMap, prices, filterClose, filterOpen]);
+
+  const delFilished = useCallback(() => {
+    orderRes.forEach(item => {
+      if(!item.anyOpen && item.order.createdAt !== item.order.updatedAt) {
+        deleteOrder(item.order.id);
+      }
+    })
+  }, [orderRes]);
 
   const renderPositionCard = (accountKey: string, price: number, position?: AccountPosition) => {
     const positionAmt = parseNumeric(position?.positionAmt) ?? 0;
@@ -400,8 +422,8 @@ export default function Home() {
     const totalBalance = Object.keys(accountMap).reduce((pre, next) => pre + Number(accountMap[next]?.totalWalletBalance || 0), 0);
     const totalVol = users.reduce((pre, next) => pre + (next.vol || 0), 0);
     return {
-      totalBalance,
-      totalVol
+      totalBalance: Number(totalBalance.toFixed(1)).toLocaleString(),
+      totalVol: Number(totalVol.toFixed(1)).toLocaleString(),
     }
   }, [accountMap, users]);
 
@@ -410,22 +432,35 @@ export default function Home() {
       <header className="mb-2 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">对冲订单管理</h1>
-          <p className="text-sm text-slate-500">在此创建和管理对冲订单。账户管理请前往<Link href="/config" className="mx-2 text-blue-500 hover:underline">账户配置</Link>页面。(<span className="text-purple-500">总金额: ${total.totalBalance.toFixed(2)} 总交易量: ${total.totalVol.toFixed(2)})</span></p>
+          <p className="text-sm text-slate-500">在此创建和管理对冲订单。账户管理请前往<Link href="/config" className="mx-2 text-blue-500 hover:underline">账户配置</Link>页面。(<span className="text-purple-500">总金额: ${total.totalBalance} 总交易量: ${total.totalVol})</span></p>
         </div>
-        <div className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-600">
+        <div className="flex gap-2">
+          <div className="flex items-center">
+            <input checked={filterOpen} onChange={e => setFilterOpen(e.target.checked)} name="checkbox" type="checkbox" />
+            <label id="checkbox">只显示<span className="text-green-600">可开仓</span></label>
+          </div>
+          <div className="flex items-center">
+            <input checked={filterClose} onChange={e => setFilterClose(e.target.checked)} name="checkbox" type="checkbox" />
+            <label id="checkbox">只显示<span className="text-red-600">可平仓</span></label>
+          </div>
+          <button onClick={delFilished} className="rounded-md border border-red-500 px-3 hover:text-white py-1 text-sm hover:bg-red-600">删除已完成</button>
+          <div className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-600">
           已创建订单：{orders.length}
+          </div>
         </div>
       </header>
       <section className="flex flex-wrap gap-2 text-center pb-4 text-sm">
         {
           us.map((user) => (
-            <div className={`shadow-sm py-2 ${user.isOpen ? 'bg-blue-300/50' : 'bg-slate-100'}`} key={user.name}>
-              <div className={`px-2 font-bold text-base ${user.vol > 50000 ? 'text-orange-600' : ''}`}>{user.name}</div>
+            <div className={`shadow-sm py-2 ${user.isOpen ? 'bg-green-100/70 shadow' : 'bg-slate-100'}`} key={user.name}>
+              <div className={`px-2 font-bold text-base ${user.vol > 10000 ? 'text-green-500' : ''} ${user.vol > 50000 ? 'text-orange-500' : ''} ${user.vol > 100000 ? 'text-purple-500' : ''} ${user.vol > 150000 ? 'text-blue-500' : ''} ${user.vol > 200000 ? 'text-red-500' : ''}`}>
+                {user.name}
+              </div>
               <div className="px-2 text-xs space-x-3 mt-1">
                 <div>
                   余额: {Number(user.balance).toFixed(1)} {' '}
                 </div>
-                <div> 交易量: ${user.vol.toFixed(1)}</div>
+                <div> 交易量: ${Math.floor(user.vol).toLocaleString()}</div>
               </div>
             </div>
           ))
@@ -435,7 +470,8 @@ export default function Home() {
         {orders.length > 0 && !isEmpty(userMap) ? <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
           {
             orderRes.map(({ order, isOpen, main, hedges, price, anyOpen }: any) => (
-              <div key={order.id} className={`rounded-lg border border-slate-200 bg-white/80 p-4 text-left ${isOpen ? "shadow-md shadow-blue-400/50" : ""}`}>
+              <div key={order.id} className={`rounded-lg relative border border-slate-200 bg-white/80 p-4 text-left ${isOpen ? "shadow-md shadow-blue-400/50" : ""}`}>
+                {order.num && <div className="absolute right-0 top-0 bg-blue-100 p-2 rounded-bl-lg">{order.num}</div>}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-xl font-semibold">
@@ -487,12 +523,16 @@ export default function Home() {
                     >
                       {closingOrderId === order.id ? "平仓中..." : "平仓"}
                     </button>
-                    <button
-                      onClick={() => deleteOrder(order.id)}
-                      className="rounded-md border border-slate-200 px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
-                    >
-                      删除
-                    </button>
+                    {
+                      !isOpen && (
+                        <button
+                          onClick={() => deleteOrder(order.id)}
+                          className="rounded-md border border-slate-200 px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
+                        >
+                          删除
+                        </button>
+                      )
+                    }
                   </div>
                 </div>
                 <div className="mt-2 space-y-2">
@@ -545,6 +585,7 @@ export default function Home() {
         editingOrder={editingOrder}
         formError={formError}
         onSetFormError={setFormError}
+        noUs={us.filter(item => !item.isOpen)}
         onCancelEdit={() => setEditingOrderId(null)}
       />
     </div>

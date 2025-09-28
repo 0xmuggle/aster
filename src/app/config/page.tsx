@@ -8,6 +8,7 @@ export default function ConfigPage() {
   const { accountMap } = useExtension();
   const { users, addUser, deleteUser } = useStore();
   const [newAccount, setNewAccount] = useState({ name: "", apiKey: "", apiSecret: "" });
+  const [batch, setBatch] = useState("");
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -23,6 +24,18 @@ export default function ConfigPage() {
       alert("Please fill in all fields.");
     }
   };
+
+  const batchAdd = () => {
+    batch.split('\n').map(item => item.split('\t')).filter(item => item[0] && item[1] && item[2]).forEach(item => {
+      addUser({ 
+        name: item[0], 
+        apiKey: item[1], 
+        apiSecret: item[2], 
+        txs: 0, 
+        vol: 0 
+      });
+    });
+  }
 
   const total = useMemo(() => {
     return Object.keys(accountMap).reduce((pre, next) => pre + Number(accountMap[next]?.totalWalletBalance || 0), 0);
@@ -65,12 +78,28 @@ export default function ConfigPage() {
             添加账户
           </button>
         </div>
+        <div className="flex gap-4 items-end mt-4">
+          <textarea
+            name="batchname"
+            placeholder="批量添加"
+            value={batch}
+            onChange={(e) => setBatch(e.target.value)}
+            className="p-2 rounded bg-gray-100 w-130"
+          >
+          </textarea>
+          <button
+            onClick={batchAdd}
+            className="bg-blue-500 hover:bg-blue-500 text-white font-bold py-1 px-4 rounded"
+          >
+            批量添加
+          </button>
+        </div>
       </div>
 
       {/* Accounts List and Balances */}
       <div className="p-4 bg-gray-50 rounded-lg">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">账户({total.toFixed(2)})</h2>
+          <h2 className="text-xl font-semibold">账户{users.length}({total.toFixed(2)})</h2>
         </div>
         <div className="space-y-4">
           {users.map((user) => (

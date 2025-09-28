@@ -10,6 +10,7 @@ export type HedgeSymbol = "BTC" | "ETH" | "SOL";
 
 export interface HedgeOrder {
   id: string;
+  num?: number;
   symbol: HedgeSymbol;
   primaryAccount: string;
   hedgeAccount: string;
@@ -30,6 +31,7 @@ export interface HedgeOrderDraft {
   amount: number;
   takeProfit: number;
   stopLoss: number;
+  num?: number;
 }
 
 export type HedgeOrderStatus = "draft" | "open" | "closed";
